@@ -1,0 +1,61 @@
+build/
+xcuserdata/
+project.xcworkspace/
+node_modules/
+_records_/
+__pycache__/
+
+brain/
+
+### OSX ###
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+
+# Source
+*.o
+*.d
+*.dylib
+*.gz
+*.pyc
+*.pkl
+
+*.log
+*.local
+
+# Thumbnails
+._*
+
+# Files that might appear on external disk
+.Spotlight-V100
+.Trashes
+
+### Linux ###
+.*
+!.gitignore
+*~
+
+### Ruby ###
+*.gem
+*.rbc
+.bundle
+.config
+coverage
+InstalledFiles
+lib/bundler/man
+pkg
+rdoc
+spec/reports
+test/tmp
+test/version_tmp
+
+# YARD artifacts
+.yardoc
+_yardoc
+doc/
+
+# Python
+dist/
+build/
+*.egg-info/
