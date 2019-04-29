@@ -3,7 +3,7 @@ import sys, os
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-version = '1.0'
+version = '1.0.1'
 
 install_requires = [
     'mss',
@@ -12,11 +12,13 @@ install_requires = [
     'configparser',
 ]
 
+readme = open("README.md").read()
 
 setup(name='acapture',
     version=version,
     description="Async web camera/video/images/screenshot capturing library.",
-    long_description="See https://github.com/aieater/python_acapture",
+    long_description="https://github.com/aieater/python_acapture\n\n"+readme,
+    long_description_content_type='text/markdown',
     classifiers=(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
