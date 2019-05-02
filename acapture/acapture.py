@@ -25,6 +25,7 @@ import glob
 import numpy as np
 import multiprocessing
 import threading
+import re
 try:
     import queue
 except ImportError:
@@ -106,10 +107,28 @@ if FFMPEG is None:
 
 class AsyncCamera:
     # format:YUYV/MJPG
-    def __init__(self,fd=int(config["AsyncCamera"]['camera']),fps=int(config["AsyncCamera"]['fps']),width=int(config["AsyncCamera"]['width']),height=int(config["AsyncCamera"]['height']),format=config["AsyncCamera"]['format']):
+    def __init__(self,fd=None,**kwargs):
+        self.conf = config["AsyncCamera"]
+        
+        for k in self.conf: setattr(self,k,self.conf[k])
+        for k in kwargs: setattr(self,k,kwargs[k])
+        def s_bool(s,k): setattr(s,k,to_bool(getattr(s,k)))
+        def s_int(s,k): setattr(s,k,int(getattr(s,k)))
+        def s_float(s,k): setattr(s,k,float(getattr(s,k)))
+        
+        s_int(self,"fps")
+        s_int(self,"width")
+        s_int(self,"height")
+        
+        if fd == None:
+            if re.match(r"\d",self.camera) is not None:
+                fd = int(self.camera)
+            else:
+                raise "not available camera number"
+        
         self.q = queue.Queue()
         self.q2 = queue.Queue()
-        self.t = threading.Thread(target=AsyncCamera.func,args=(self.q,self.q2,fd,{"fps":fps,"width":width,"height":height,"format":format}))
+        self.t = threading.Thread(target=AsyncCamera.func,args=(self.q,self.q2,fd,{"fps":self.fps,"width":self.width,"height":self.height,"format":self.format}))
         self.t.setName("AsyncCamera")
         self.t.setDaemon(True)
         self.t.start()
@@ -156,26 +175,25 @@ class AsyncCamera:
         return self.current
 
 class AsyncVideo:
-    def __init__(self,fd=None,kwargs={}):
+    def __init__(self,fd=None,**kwargs):
+        self.conf = config["AsyncVideo"]
         self.frame_capture = False
         self.queue = queue.Queue()
-        self.loop = True
-
+        
+        for k in self.conf: setattr(self,k,self.conf[k])
+        for k in kwargs: setattr(self,k,kwargs[k])
+        def s_bool(s,k): setattr(s,k,to_bool(getattr(s,k)))
+        def s_int(s,k): setattr(s,k,int(getattr(s,k)))
+        def s_float(s,k): setattr(s,k,float(getattr(s,k)))
+        
+        s_bool(self,"loop")
+        s_bool(self,"frame_capture")
+        s_bool(self,"sound")
+        s_float(self,"sound_volume")
+        
         if fd is None:
-            fd = config["AsyncVideo"]["file"]
-        if "frame_capture" in kwargs:
-            self.frame_capture = kwargs["frame_capture"]
-        else:
-            self.frame_capture = to_bool(config["AsyncVideo"]['frame_capture'])
-        # print(self.frame_capture)
-        if "loop" in kwargs:
-            self.loop = kwargs["loop"]
-        else:
-            self.loop = to_bool(config["AsyncVideo"]['loop'])
-
-        self.volume = float(config["AsyncVideo"]['sound_volume'])
-
-
+            fd = self.conf["file"]
+        
         v = cv2.VideoCapture(fd,cv2.CAP_FFMPEG)
         self.start_time = 0
         self.offset = 0
@@ -183,7 +201,7 @@ class AsyncVideo:
         self.fps = v.get(cv2.CAP_PROP_FPS)
         sound = None
         sound_fd = None
-        if self.frame_capture == False and to_bool(config["AsyncVideo"]['sound']):
+        if self.frame_capture == False and self.sound and self.sound_volume > 0:
             FFMPEG = which('ffmpeg') #"/usr/local/bin/ffmpeg"
             fd = fd.replace("\\","")
             sound = fd + ".mp3"
@@ -370,10 +388,13 @@ class ScreenCapture:
 
 
 def open(f,**kwargs):
+    if type(f) == str:
+        if re.match(r"\d",f) is not None: f = int(f)
+        if f == "-1": f = -1
     if isinstance(f, (int,)):
         if f == -1:
             return ScreenCapture()
-        return AsyncCamera(f)
+        return AsyncCamera(f,**kwargs)
     if os.path.exists(f):
         if os.path.isdir(f):
             return DirImgFileStub(f)
@@ -383,7 +404,7 @@ def open(f,**kwargs):
             if ext == ".png" or ext == ".jpg" or ext == ".jpeg" or ext == ".tiff" or ext == ".psd" or ext == ".gif" or ext == ".bmp":
                 return ImgFileStub(f)
             else:
-                return AsyncVideo(f,kwargs)
+                return AsyncVideo(f,**kwargs)
     else:
         print("Does not exist",f)
     return None
