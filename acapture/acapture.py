@@ -104,28 +104,29 @@ if FFMPEG is None:
     print("   > sudo apt install -y ffmpeg # on Ubuntu")
 
 
-
-class AsyncCamera:
+class BaseCapture(object):
+    def keyboard_listener(self,key,x,y): pass
+class AsyncCamera(BaseCapture):
     # format:YUYV/MJPG
     def __init__(self,fd=None,**kwargs):
         self.conf = config["AsyncCamera"]
-        
+
         for k in self.conf: setattr(self,k,self.conf[k])
         for k in kwargs: setattr(self,k,kwargs[k])
         def s_bool(s,k): setattr(s,k,to_bool(getattr(s,k)))
         def s_int(s,k): setattr(s,k,int(getattr(s,k)))
         def s_float(s,k): setattr(s,k,float(getattr(s,k)))
-        
+
         s_int(self,"fps")
         s_int(self,"width")
         s_int(self,"height")
-        
+
         if fd == None:
             if re.match(r"\d",self.camera) is not None:
                 fd = int(self.camera)
             else:
                 raise "not available camera number"
-        
+
         self.q = queue.Queue()
         self.q2 = queue.Queue()
         self.t = threading.Thread(target=AsyncCamera.func,args=(self.q,self.q2,fd,{"fps":self.fps,"width":self.width,"height":self.height,"format":self.format}))
@@ -174,26 +175,29 @@ class AsyncCamera:
             self.current = o
         return self.current
 
-class AsyncVideo:
+class AsyncVideo(BaseCapture):
     def __init__(self,fd=None,**kwargs):
         self.conf = config["AsyncVideo"]
+        self.lock = threading.Lock()
         self.frame_capture = False
+        self.reset = 0
+        self.key_queue = []
         self.queue = queue.Queue()
-        
+
         for k in self.conf: setattr(self,k,self.conf[k])
         for k in kwargs: setattr(self,k,kwargs[k])
         def s_bool(s,k): setattr(s,k,to_bool(getattr(s,k)))
         def s_int(s,k): setattr(s,k,int(getattr(s,k)))
         def s_float(s,k): setattr(s,k,float(getattr(s,k)))
-        
+
         s_bool(self,"loop")
         s_bool(self,"frame_capture")
         s_bool(self,"sound")
         s_float(self,"sound_volume")
-        
+
         if fd is None:
             fd = self.conf["file"]
-        
+
         v = cv2.VideoCapture(fd,cv2.CAP_FFMPEG)
         self.start_time = 0
         self.offset = 0
@@ -233,12 +237,16 @@ class AsyncVideo:
         self.t.setDaemon(True)
         self.t.start()
 
+    def keyboard_listener(self,key,x,y):
+        self.key_queue.append(key)
+
     def is_ended(self): return self.seq_is_ended
 
     def func(self):
         tm = time.time()
         cnt = 0
         tm2 = time.time()
+        lock = self.lock
         while True:
             if time.time()-tm2 > 1.0:
                 if threading.main_thread().is_alive() == False:
@@ -268,16 +276,24 @@ class AsyncVideo:
             #############################################################################
             # Player
             else:
+                lock.acquire()
                 if self.previous_frame != self.f:
                     current_frame = int(self.f)
                     if self.framecount > current_frame:
+                        lock.release()
                         time.sleep(0.008)
                         self.previous_frame = current_frame
+
                         continue
                     self.framecount += 1
-                    if self.framecount-current_frame > 10:
+                    if current_frame-self.framecount > 10 or self.reset:
+                        #print("SET",current_frame,self.framecount,self.reset)
                         self.v.set(cv2.CAP_PROP_POS_FRAMES,current_frame)
+                        self.reset = 0
+                        self.framecount = current_frame
+                    lock.release()
                     check,frame = self.v.read()
+                    lock.acquire()
                     if check:
                         self.current = (check,cv2.cvtColor(frame,cv2.COLOR_BGR2RGB))
                     self.previous_frame = current_frame
@@ -286,7 +302,7 @@ class AsyncVideo:
                         tm = time.time()
                         if DEBUG: print("VideoFPS:",cnt)
                         cnt = 0
-                # print(self.framecount,self.seq)
+                # print(self.framecount,self.seq,self.f,self.offset,time.time()-self.start_time)
                 if self.seq <= self.f:
                     if DEBUG: print("End")
                     if self.loop:
@@ -295,11 +311,14 @@ class AsyncVideo:
                         self.start_time = 0
                         self.framecount = 0
                         self.previous_frame = -1
+                        self.offset = 0
+                        self.f = 0
                     else:
                         self.seq_is_ended = True
                 else:
                     # pass
                     time.sleep(0.008)
+                lock.release()
 
     def destroy(self):
         self.need_to_close = True
@@ -313,6 +332,7 @@ class AsyncVideo:
             traceback.print_exc()
 
     def read(self):
+        tm = time.time()
         #############################################################################
         # Extractor
         if self.frame_capture:
@@ -322,22 +342,84 @@ class AsyncVideo:
 
         #############################################################################
         # Player
-        f = ((time.time()-self.start_time+self.offset)*self.fps)
-        if self.start_time < 0.001:
+        lock = self.lock
+        lock.acquire()
+
+        key = 0
+        reset = 0
+        if len(self.key_queue)>0:
+            key = self.key_queue.pop(0)
+        if key:
+            if (key&0x0100):
+                if (key&0xFF) == 100:#left
+                    self.offset -= 5
+                    self.reset = 1
+                if (key&0xFF) == 101:#top
+                    self.offset += 30
+                    self.reset = 1
+                if (key&0xFF) == 102:#right
+                    self.offset += 5
+                    self.reset = 1
+                if (key&0xFF) == 103:#bottom
+                    self.offset -= 30
+                    self.reset = 1
+                pf = ((tm-self.start_time+self.offset)*self.fps)
+
+                self.framecount = 0
+                if pf < 0:
+                    self.start_time = tm
+                    self.offset = 0
+                if self.seq <= pf:
+                    self.start_time = 0
+                    self.offset = 0
+                #print(key&0xFF)
+            else:
+                if (key&0xFF) == ord(b'q'):
+                    return
+                if (key&0xFF) == ord(b'/'): # dec vol
+                    if self.sound is not None:
+                        self.sound_volume -= 0.1
+                        if self.sound_volume < 0: self.sound_volume = 0
+                        pygame.mixer.music.set_volume(self.sound_volume)
+                if (key&0xFF) == ord(b'*'): # inc vol
+                    if self.sound is not None:
+                        self.sound_volume += 0.1
+                        if self.sound_volume > 1.0: self.sound_volume = 1.0
+                        pygame.mixer.music.set_volume(self.sound_volume)
+
+
+
+        f = ((tm-self.start_time+self.offset)*self.fps)
+        if self.reset:
+            if self.sound:
+                p = 0
+                if tm-self.start_time+self.offset > 0:
+                    p = tm-self.start_time+self.offset
+                pygame.mixer.music.play(0,p)
+
+        # pygame.mixer.music.stop()
+        # pygame.mixer.music.play(0,self.start_time*1)
+        # # pygame.mixer.music.set_pos(0)
+        # pygame.mixer.music.set_volume(self.sound_volume)
+        if self.start_time == 0:
             if self.sound is not None:
                 try:
-                    pygame.mixer.music.play(-1)
-                    pygame.mixer.music.set_pos(0)
-                    pygame.mixer.music.set_volume(self.volume)
+                    pygame.mixer.music.stop()
+                    pygame.mixer.music.play(0)
+                    pygame.mixer.music.set_volume(self.sound_volume)
                 except:
                     self.sound = None
-            self.start_time = time.time()
+            self.framecount = 0
+            self.previous_frame = -1
+            self.offset = 0
+            self.start_time = tm
             self.offset = 0
             f = 0
         self.f = f
+        lock.release()
         return self.current
 
-class ImgFileStub:
+class ImgFileStub(BaseCapture):
     def __init__(self,fd):
         self.f = cv2.imread(fd,cv2.IMREAD_COLOR)
         self.f = cv2.cvtColor(self.f,cv2.COLOR_BGR2RGB)
@@ -347,7 +429,7 @@ class ImgFileStub:
     def read(self):
         return (True,self.f)
 
-class DirImgFileStub:
+class DirImgFileStub(BaseCapture):
     def __init__(self,fd):
         self.f = fd
         if self.f[-1] != os.sep:
@@ -373,7 +455,7 @@ class DirImgFileStub:
                 return (True,img)
         return (False,None)
 
-class ScreenCapture:
+class ScreenCapture(BaseCapture):
     def __init__(self): self.need_to_close = False
     def is_ended(self): return False
     def destroy(self): self.need_to_close = True
@@ -513,8 +595,9 @@ def convert(f,func):
 if __name__ == '__main__':
     import acapture
     import pyglview
+    # cap = acapture.open(-1)
     cap = acapture.open(os.path.join(os.path.expanduser('~'),"test.mp4"))
-    view = pyglview.Viewer()
+    view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener)
     def loop():
         try:
             check,frame = cap.read()
