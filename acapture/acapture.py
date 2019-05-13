@@ -477,6 +477,7 @@ def open(f,**kwargs):
         if f == -1:
             return ScreenCapture()
         return AsyncCamera(f,**kwargs)
+    return AsyncVideo(f,**kwargs)
     if os.path.exists(f):
         if os.path.isdir(f):
             return DirImgFileStub(f)
@@ -590,19 +591,31 @@ def convert(f,func):
     print("Attach audio to video.")
     joinaudio(dr+".out.mp4",f+".out.mp3")
     print("Completed.")
+    
+def gamma(img,g):
+    lookUpTable = np.empty((1,256), np.uint8)
+    for i in range(256):
+        lookUpTable[0,i] = np.clip(pow(i / 255.0, g) * 255.0, 0, 255)
+    img = cv2.LUT(img, lookUpTable)
+    return img
 
 
 if __name__ == '__main__':
     import acapture
     import pyglview
+    import sys
     # cap = acapture.open(-1)
-    cap = acapture.open(os.path.join(os.path.expanduser('~'),"test.mp4"))
+    cap = None
+    if len(sys.argv)>1:
+        cap = acapture.open(sys.argv[1])
+    else:
+        cap = acapture.open(os.path.join(os.path.expanduser('~'),"test.mp4"))
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener)
     def loop():
         try:
             check,frame = cap.read()
             if check:
-                view.set_image(frame)
+                view.set_image(gamma(frame,0.6))
         except:
             traceback.print_exc()
             exit(9)
