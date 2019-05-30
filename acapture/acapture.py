@@ -477,7 +477,7 @@ def open(f,**kwargs):
         if f == -1:
             return ScreenCapture()
         return AsyncCamera(f,**kwargs)
-    #return AsyncVideo(f,**kwargs)
+    f = os.path.expanduser(f)
     if os.path.exists(f):
         if os.path.isdir(f):
             return DirImgFileStub(f)
