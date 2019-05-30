@@ -477,7 +477,7 @@ def open(f,**kwargs):
         if f == -1:
             return ScreenCapture()
         return AsyncCamera(f,**kwargs)
-    return AsyncVideo(f,**kwargs)
+    #return AsyncVideo(f,**kwargs)
     if os.path.exists(f):
         if os.path.isdir(f):
             return DirImgFileStub(f)
@@ -591,7 +591,7 @@ def convert(f,func):
     print("Attach audio to video.")
     joinaudio(dr+".out.mp4",f+".out.mp3")
     print("Completed.")
-    
+
 def gamma(img,g):
     lookUpTable = np.empty((1,256), np.uint8)
     for i in range(256):
