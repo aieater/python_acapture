@@ -610,6 +610,9 @@ if __name__ == '__main__':
         cap = acapture.open(sys.argv[1])
     else:
         cap = acapture.open(os.path.join(os.path.expanduser('~'),"test.mp4"))
+    if cap is None:
+        print("Could not detect capture fd")
+        exit(9)
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener)
     def loop():
         try:
