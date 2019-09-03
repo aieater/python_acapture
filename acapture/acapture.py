@@ -210,7 +210,9 @@ class AsyncVideo(BaseCapture):
             fd = fd.replace("\\","")
             sound = fd + ".mp3"
             cmd = FFMPEG+" -i \""+fd+"\" -ab 192 -ar 44100 \""+fd+".mp3\""
-            subprocess.call("/bin/bash -c \"if [ ! -e \""+sound+"\" ]; then "+cmd+"; fi\"", shell=True, stdout=subprocess.PIPE)
+
+            if os.path.exists(sound) == False:
+                subprocess.call(cmd, shell=True, stdout=subprocess.PIPE)
             if sound is not None:
                 try:
                     sound_fd = _g_open(sound,"rb")
@@ -613,7 +615,7 @@ if __name__ == '__main__':
     if cap is None:
         print("Could not detect capture fd")
         exit(9)
-    view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener)
+    view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener,fullscreen=False)
     def loop():
         try:
             check,frame = cap.read()

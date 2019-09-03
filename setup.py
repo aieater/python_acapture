@@ -3,7 +3,7 @@ import sys, os
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-version = '1.0.7'
+version = '1.0.8'
 
 install_requires = [
     'mss',
