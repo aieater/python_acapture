@@ -326,7 +326,7 @@ class AsyncVideo(BaseCapture):
         self.need_to_close = True
         if self.sound is not None:
             pygame.mixer.music.stop()
-            sound_fd.close()
+            self.sound_fd.close()
         try:
             self.v.release()
             if DEBUG: print("Released-AsyncVideo")
