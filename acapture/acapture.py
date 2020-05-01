@@ -550,9 +550,9 @@ def compress_images2video(f, **kwargs):
         format = kwargs["format"]
     if "fps" in kwargs:
         fps = kwargs["fps"]
-    cmd = "%s -framerate %s -i \"%s/image_%%05d.jpg\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
+    cmd = "%s -y -framerate %s -i \"%s/image_%%05d.jpg\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
     if format == "png":
-        cmd = "%s -framerate %s -i \"%s/image_%%05d.png\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
+        cmd = "%s -y -framerate %s -i \"%s/image_%%05d.png\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
     print(cmd)
     subprocess.call(cmd, shell=True)
 
