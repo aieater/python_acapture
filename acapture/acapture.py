@@ -62,6 +62,9 @@ except:
     print("   > curl -sL http://install.aieater.com/setup_opencv | bash -")
     print("   or")
     print("   > pip3 install opencv-python")
+    print("   or")
+    print("   > apt install python3-opencv")
+    exit(9)
 
 try:
     import os
@@ -69,7 +72,10 @@ try:
     with _g_open(os.devnull, 'w') as f:
         oldstdout = sys.stdout
         sys.stdout = f
-        import pygame
+        from importlib import util as importlib_util 
+        if importlib_util.find_spec("pygame") is None:
+            print("Error: Does not exist sound mixer library.")
+            print("   > pip3 install pygame contextlib")
         sys.stdout = oldstdout
 except:
     traceback.print_exc()
@@ -115,6 +121,7 @@ class BaseCapture(object):
 class AsyncCamera(BaseCapture):
     # format:YUYV/MJPG
     def __init__(self, fd=None, **kwargs):
+        global FFMPEG
         self.conf = config["AsyncCamera"]
 
         for k in self.conf: setattr(self, k, self.conf[k])
@@ -184,6 +191,7 @@ class AsyncCamera(BaseCapture):
 
 class AsyncVideo(BaseCapture):
     def __init__(self, fd=None, **kwargs):
+        global FFMPEG
         self.conf = config["AsyncVideo"]
         self.lock = threading.Lock()
         self.frame_capture = False
@@ -213,8 +221,7 @@ class AsyncVideo(BaseCapture):
         self.fps = v.get(cv2.CAP_PROP_FPS)
         sound = None
         sound_fd = None
-        if self.frame_capture is False and self.sound and self.sound_volume > 0:
-            FFMPEG = which('ffmpeg')  # "/usr/local/bin/ffmpeg"
+        if FFMPEG is not None and self.frame_capture is False and self.sound and self.sound_volume > 0:
             fd = fd.replace("\\", "")
             sound = fd + ".mp3"
             cmd = FFMPEG + " -i \"" + fd + "\" -ab 192 -ar 44100 \"" + fd + ".mp3\""
@@ -521,7 +528,7 @@ def camera_info():
 
 
 def extract_video2images(f, **kwargs):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = f.strip()
     dr = os.path.join(os.path.dirname(f), os.path.basename(f).split(".")[0])
     mkdir = "mkdir -p \"" + dr + "\""
@@ -542,7 +549,7 @@ def extract_video2images(f, **kwargs):
 
 
 def compress_images2video(f, **kwargs):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     format = "jpg"
     fps = "30"
@@ -558,7 +565,7 @@ def compress_images2video(f, **kwargs):
 
 
 def extract_video2audio(f):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     cmd = "%s -i \"%s\" -ab 192 -ar 44100 \"%s.out.mp3\"" % (FFMPEG, f, f,)
     print(cmd)
@@ -566,7 +573,7 @@ def extract_video2audio(f):
 
 
 def join_audio_with_video(f, sf):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     sf = os.path.abspath(sf)
     print(f, sf)
@@ -623,7 +630,7 @@ if __name__ == '__main__':
     import pyglview
     import sys
     
-    cap = acapture.open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser('~'), "test4.mp4"))
+    cap = acapture.open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser('~'), "test.mp4"))
 
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener, fullscreen=False)
 
