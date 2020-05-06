@@ -62,14 +62,19 @@ except:
     print("   > curl -sL http://install.aieater.com/setup_opencv | bash -")
     print("   or")
     print("   > pip3 install opencv-python")
+    print("   or")
+    print("   > apt install python3-opencv")
+    exit(9)
 
 try:
     import os
-    import sys
     with _g_open(os.devnull, 'w') as f:
         oldstdout = sys.stdout
         sys.stdout = f
-        import pygame
+        from importlib import util as importlib_util
+        if importlib_util.find_spec("pygame") is None:
+            print("Error: Does not exist sound mixer library.")
+            print("   > pip3 install pygame contextlib")
         sys.stdout = oldstdout
 except:
     traceback.print_exc()
@@ -115,6 +120,7 @@ class BaseCapture(object):
 class AsyncCamera(BaseCapture):
     # format:YUYV/MJPG
     def __init__(self, fd=None, **kwargs):
+        global FFMPEG
         self.conf = config["AsyncCamera"]
 
         for k in self.conf: setattr(self, k, self.conf[k])
@@ -145,15 +151,16 @@ class AsyncCamera(BaseCapture):
 
     def is_ended(self): return False
 
+    @staticmethod
     def func(q, q2, fd, opt):
         import cv2
         import time
         v = cv2.VideoCapture(fd)
         buffers = []
-        v.set(cv2.CAP_PROP_FOURCC, (ord(opt['format'][0]) << 0) + (ord(opt['format'][1]) << 8) + (ord(opt['format'][2]) << 16) + (ord(opt['format'][3]) << 24))
-        v.set(cv2.CAP_PROP_FPS, opt["fps"])
-        v.set(cv2.CAP_PROP_FRAME_WIDTH, opt["width"])
-        v.set(cv2.CAP_PROP_FRAME_HEIGHT, opt["height"])
+        # v.set(cv2.CAP_PROP_FOURCC, (ord(opt['format'][0]) << 0) + (ord(opt['format'][1]) << 8) + (ord(opt['format'][2]) << 16) + (ord(opt['format'][3]) << 24))
+        # v.set(cv2.CAP_PROP_FPS, opt["fps"])
+        # v.set(cv2.CAP_PROP_FRAME_WIDTH, opt["width"])
+        # v.set(cv2.CAP_PROP_FRAME_HEIGHT, opt["height"])
         cnt = 0
         tm = time.time()
         while v.isOpened():
@@ -164,10 +171,10 @@ class AsyncCamera(BaseCapture):
                     if DEBUG: print("CameraFPS:", cnt, src.shape)
                     cnt = 0
                     tm = time.time()
-                if q.qsize() < 1:
+                if q.empty():
                     src = cv2.cvtColor(src, cv2.COLOR_BGR2RGB)
                     q.put((time.time(), src))
-                if q2.qsize() > 0:
+                if q2.empty() is False:
                     print("Kill camera thread")
                     return
 
@@ -184,6 +191,7 @@ class AsyncCamera(BaseCapture):
 
 class AsyncVideo(BaseCapture):
     def __init__(self, fd=None, **kwargs):
+        global FFMPEG
         self.conf = config["AsyncVideo"]
         self.lock = threading.Lock()
         self.frame_capture = False
@@ -209,12 +217,13 @@ class AsyncVideo(BaseCapture):
         v = cv2.VideoCapture(fd, cv2.CAP_FFMPEG)
         self.start_time = 0
         self.offset = 0
-        self.seq = v.get(cv2.CAP_PROP_FRAME_COUNT)
+        self.total = self.seq = v.get(cv2.CAP_PROP_FRAME_COUNT)
         self.fps = v.get(cv2.CAP_PROP_FPS)
+        self.width = v.get(cv2.CAP_PROP_FRAME_WIDTH)
+        self.height = v.get(cv2.CAP_PROP_FRAME_HEIGHT)
         sound = None
         sound_fd = None
-        if self.frame_capture is False and self.sound and self.sound_volume > 0:
-            FFMPEG = which('ffmpeg')  # "/usr/local/bin/ffmpeg"
+        if FFMPEG is not None and self.frame_capture is False and self.sound and self.sound_volume > 0:
             fd = fd.replace("\\", "")
             sound = fd + ".mp3"
             cmd = FFMPEG + " -i \"" + fd + "\" -ab 192 -ar 44100 \"" + fd + ".mp3\""
@@ -243,6 +252,7 @@ class AsyncVideo(BaseCapture):
         self.current = (False, None)
         self.previous_frame = -1
         self.t = threading.Thread(target=self.func, args=())
+        # self.t = threading.Thread(target=self.func, args=())
         self.t.setName("AsyncVideo")
         self.t.setDaemon(True)
         self.t.start()
@@ -270,6 +280,7 @@ class AsyncVideo(BaseCapture):
             # Extractor
             if self.frame_capture:
                 if self.queue.qsize() > 60 * 60:
+                    print("@@@@@@@@")
                     time.sleep(0.008)
                     continue
                 check, frame = self.v.read()
@@ -346,7 +357,7 @@ class AsyncVideo(BaseCapture):
         #############################################################################
         # Extractor
         if self.frame_capture:
-            if self.queue.qsize() > 0:
+            if self.queue.empty() is False:
                 return self.queue.get()
             return (False, None)
 
@@ -521,7 +532,7 @@ def camera_info():
 
 
 def extract_video2images(f, **kwargs):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = f.strip()
     dr = os.path.join(os.path.dirname(f), os.path.basename(f).split(".")[0])
     mkdir = "mkdir -p \"" + dr + "\""
@@ -542,7 +553,7 @@ def extract_video2images(f, **kwargs):
 
 
 def compress_images2video(f, **kwargs):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     format = "jpg"
     fps = "30"
@@ -558,7 +569,7 @@ def compress_images2video(f, **kwargs):
 
 
 def extract_video2audio(f):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     cmd = "%s -i \"%s\" -ab 192 -ar 44100 \"%s.out.mp3\"" % (FFMPEG, f, f,)
     print(cmd)
@@ -566,7 +577,7 @@ def extract_video2audio(f):
 
 
 def join_audio_with_video(f, sf):
-    FFMPEG = which('ffmpeg')
+    global FFMPEG
     f = os.path.abspath(f)
     sf = os.path.abspath(sf)
     print(f, sf)
@@ -622,8 +633,8 @@ if __name__ == '__main__':
     import acapture
     import pyglview
     import sys
-    
-    cap = acapture.open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser('~'), "test4.mp4"))
+
+    cap = acapture.open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser('~'), "test.mp4"))
 
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener, fullscreen=False)
 

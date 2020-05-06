@@ -3,12 +3,10 @@ import sys, os
 
 here = os.path.abspath(os.path.dirname(__file__))
 
-version = '1.1.1'
+version = '1.2.1'
 
 install_requires = [
     'mss',
-    'opencv-python',
-    'pygame',
     'configparser',
 ]
 
@@ -22,8 +20,6 @@ setup(name='acapture',
     classifiers=(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
-        'Programming Language :: Python :: 2',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
