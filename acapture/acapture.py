@@ -75,6 +75,8 @@ try:
         if importlib_util.find_spec("pygame") is None:
             print("Error: Does not exist sound mixer library.")
             print("   > pip3 install pygame contextlib")
+        else:
+            import pygame
         sys.stdout = oldstdout
 except:
     traceback.print_exc()
