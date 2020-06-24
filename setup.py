@@ -8,6 +8,7 @@ version = '1.2.3'
 install_requires = [
     'mss',
     'configparser',
+    'easydict',
 ]
 
 readme = open("README.md").read()

@@ -1,87 +1,70 @@
-from __future__ import print_function
+#!/usr/bin/env python3
+
+import glob
+import logging
 import os
-DEBUG = False
-def to_bool(s): return s in [1,'True','TRUE','true','1','yes','Yes','Y','y','t']
-USE_CONFIG = "ACAPTURE_CONFIG" in os.environ
-if "DEBUG" in os.environ and to_bool(os.environ["DEBUG"]):
-    DEBUG = True
-    try: import __builtin__
-    except ImportError: import builtins as __builtin__
-    import inspect
-    def lpad(s,c): return s[0:c].ljust(c)
-    def rpad(s,c):
-        if len(s) > c: return s[len(s)-c:]
-        else: return s.rjust(c)
-    def print(*args, **kwargs):
-        s = inspect.stack()
-        __builtin__.print("\033[47m%s@%s(%s):\033[0m "%(rpad(s[1][1],20), lpad(str(s[1][3]),10), rpad(str(s[1][2]),4)),end="")
-        return __builtin__.print(*args, **kwargs)
-_g_open = open
 import platform
+import re
 import subprocess
 import sys
-import time
-import glob
-import numpy as np
-import multiprocessing
 import threading
-import re
+import time
+
+import numpy as np
+from easydict import EasyDict as edict
+
+_g_open = open
 try:
     import queue
 except ImportError:
     import Queue as queue
-from io import BytesIO
-import configparser
-import traceback
+logger = logging.getLogger(__name__)
 
 
-config = configparser.ConfigParser()
-ini_file_name = os.path.basename(__file__.split(".")[0] + ".ini")
-if os.path.exists(ini_file_name) and USE_CONFIG:
-    config.read(ini_file_name)
-else:
-    config["AsyncCamera"] = {"camera": 0, "fps": 60, "width": 1280, "height": 720, "format": "MJPG"}
-    config["AsyncVideo"] = {"file": "video.mp4", "loop": True, "frame_capture": False, "sound": True, "sound_volume": 0.3}
-    if USE_CONFIG: config.write(_g_open(ini_file_name, "w"))
+def to_bool(s):
+    return s in [1, 'True', 'TRUE', 'true', '1', 'yes', 'Yes', 'Y', 'y', 't']
 
 
-def get_config(): return {section: dict(config[section]) for section in config.sections()}
-
+config = edict()
+config.camera = edict({"camera": 0, "fps": 60, "width": 1280, "height": 720, "format": "MJPG"})
+config.video = edict({"file": "video.mp4", "loop": True, "frame_capture": False, "sound": True, "sound_volume": 0.3})
 
 try:
     from mss import mss
-except:
+except Exception as e:
+    print(e)
     print("Error: Does not exist screen capture library.")
     print("   > pip3 install mss")
 
-
 try:
     import cv2
-except:
+except Exception as e:
+    print(e)
     print("Error: Does not exist OpenCV library.")
     print("   > curl -sL http://install.aieater.com/setup_opencv | bash -")
     print("   or")
     print("   > pip3 install opencv-python")
     print("   or")
     print("   > apt install python3-opencv")
-    exit(9)
+    raise e
 
+oldstdout = sys.stdout
 try:
-    import os
     with _g_open(os.devnull, 'w') as f:
-        oldstdout = sys.stdout
         sys.stdout = f
         from importlib import util as importlib_util
         if importlib_util.find_spec("pygame") is None:
+            sys.stdout = oldstdout
             print("Error: Does not exist sound mixer library.")
-            print("   > pip3 install pygame contextlib")
+            print("   > pip3 install pygame")
         else:
             import pygame
         sys.stdout = oldstdout
-except:
-    traceback.print_exc()
+except Exception as e:
+    sys.stdout = oldstdout
+    print(e)
     print("Error: Does not exist sound mixer library.")
-    print("   > pip3 install pygame contextlib")
+    print("   > pip3 install pygame")
 
 
 def which(program):
@@ -90,12 +73,16 @@ def which(program):
             cmd = subprocess.check_output("which " + program, shell=True)
             cmd = cmd.decode("utf8").strip()
             return cmd
-        except:
+        except Exception as e:
+            (e)
             return None
     else:
+
         def is_exe(fpath):
             return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
         fpath, fname = os.path.split(program)
+        (fname)
         if fpath:
             if is_exe(program):
                 return program
@@ -116,26 +103,34 @@ if FFMPEG is None:
 
 
 class BaseCapture(object):
-    def keyboard_listener(self, key, x, y): pass
+    def keyboard_listener(self, key, x, y):
+        pass
 
 
 class AsyncCamera(BaseCapture):
-    # format:YUYV/MJPG
     def __init__(self, fd=None, **kwargs):
         global FFMPEG
-        self.conf = config["AsyncCamera"]
+        self.conf = config.camera
 
-        for k in self.conf: setattr(self, k, self.conf[k])
-        for k in kwargs: setattr(self, k, kwargs[k])
-        def s_bool(s, k): setattr(s, k, to_bool(getattr(s, k)))
-        def s_int(s, k): setattr(s, k, int(getattr(s, k)))
-        def s_float(s, k): setattr(s, k, float(getattr(s, k)))
+        for k in self.conf:
+            setattr(self, k, self.conf[k])
+        for k in kwargs:
+            setattr(self, k, kwargs[k])
+
+        def s_bool(s, k):
+            setattr(s, k, to_bool(getattr(s, k)))
+
+        def s_int(s, k):
+            setattr(s, k, int(getattr(s, k)))
+
+        def s_float(s, k):
+            setattr(s, k, float(getattr(s, k)))
 
         s_int(self, "fps")
         s_int(self, "width")
         s_int(self, "height")
 
-        if fd == None:
+        if fd is None:
             if re.match(r"\d", self.camera) is not None:
                 fd = int(self.camera)
             else:
@@ -149,36 +144,40 @@ class AsyncCamera(BaseCapture):
         self.t.start()
         self.current = None
 
-    def destroy(self): self.q2.put(0)
+    def destroy(self):
+        self.q2.put(0)
 
-    def is_ended(self): return False
+    def is_ended(self):
+        return False
 
     @staticmethod
     def func(q, q2, fd, opt):
         import cv2
         import time
-        v = cv2.VideoCapture(fd)
-        buffers = []
-        # v.set(cv2.CAP_PROP_FOURCC, (ord(opt['format'][0]) << 0) + (ord(opt['format'][1]) << 8) + (ord(opt['format'][2]) << 16) + (ord(opt['format'][3]) << 24))
-        # v.set(cv2.CAP_PROP_FPS, opt["fps"])
-        # v.set(cv2.CAP_PROP_FRAME_WIDTH, opt["width"])
-        # v.set(cv2.CAP_PROP_FRAME_HEIGHT, opt["height"])
-        cnt = 0
-        tm = time.time()
-        while v.isOpened():
-            stat, src = v.read()
-            if stat:
-                cnt += 1
-                if time.time() - tm > 1.0:
-                    if DEBUG: print("CameraFPS:", cnt, src.shape)
-                    cnt = 0
-                    tm = time.time()
-                if q.empty():
-                    src = cv2.cvtColor(src, cv2.COLOR_BGR2RGB)
-                    q.put((time.time(), src))
-                if q2.empty() is False:
-                    print("Kill camera thread")
-                    return
+        try:
+            v = cv2.VideoCapture(fd)
+            # v.set(cv2.CAP_PROP_FOURCC, (ord(opt['format'][0]) << 0) + (ord(opt['format'][1]) << 8) + (ord(opt['format'][2]) << 16) + (ord(opt['format'][3]) << 24))
+            # v.set(cv2.CAP_PROP_FPS, opt["fps"])
+            # v.set(cv2.CAP_PROP_FRAME_WIDTH, opt["width"])
+            # v.set(cv2.CAP_PROP_FRAME_HEIGHT, opt["height"])
+            cnt = 0
+            tm = time.time()
+            while v.isOpened():
+                stat, src = v.read()
+                if stat:
+                    cnt += 1
+                    if time.time() - tm > 1.0:
+                        logger.debug(f"CameraFPS: {cnt} {src.shape}")
+                        cnt = 0
+                        tm = time.time()
+                    if q.empty():
+                        src = cv2.cvtColor(src, cv2.COLOR_BGR2RGB)
+                        q.put((time.time(), src))
+                    if q2.empty() is False:
+                        logger.info("Kill camera thread")
+                        return
+        except Exception as e:
+            print(e)
 
     def read(self):
         while self.current is None:
@@ -194,18 +193,26 @@ class AsyncCamera(BaseCapture):
 class AsyncVideo(BaseCapture):
     def __init__(self, fd=None, **kwargs):
         global FFMPEG
-        self.conf = config["AsyncVideo"]
+        self.conf = config.video
         self.lock = threading.Lock()
         self.frame_capture = False
         self.reset = 0
         self.key_queue = []
         self.queue = queue.Queue()
 
-        for k in self.conf: setattr(self, k, self.conf[k])
-        for k in kwargs: setattr(self, k, kwargs[k])
-        def s_bool(s, k): setattr(s, k, to_bool(getattr(s, k)))
-        def s_int(s, k): setattr(s, k, int(getattr(s, k)))
-        def s_float(s, k): setattr(s, k, float(getattr(s, k)))
+        for k in self.conf:
+            setattr(self, k, self.conf[k])
+        for k in kwargs:
+            setattr(self, k, kwargs[k])
+
+        def s_bool(s, k):
+            setattr(s, k, to_bool(getattr(s, k)))
+
+        def s_int(s, k):
+            setattr(s, k, int(getattr(s, k)))
+
+        def s_float(s, k):
+            setattr(s, k, float(getattr(s, k)))
 
         s_bool(self, "loop")
         s_bool(self, "frame_capture")
@@ -237,7 +244,9 @@ class AsyncVideo(BaseCapture):
                     sound_fd = _g_open(sound, "rb")
                     pygame.mixer.init()
                     pygame.mixer.music.load(sound_fd)
-                except:
+                except Exception as e:
+                    logger.warning(e)
+                    logger.warning("Could not initialize sound.")
                     sound = None
                     sound_fd = None
 
@@ -262,7 +271,8 @@ class AsyncVideo(BaseCapture):
     def keyboard_listener(self, key, x, y):
         self.key_queue.append(key)
 
-    def is_ended(self): return self.seq_is_ended
+    def is_ended(self):
+        return self.seq_is_ended
 
     def func(self):
         tm = time.time()
@@ -273,7 +283,7 @@ class AsyncVideo(BaseCapture):
             if time.time() - tm2 > 1.0:
                 if threading.main_thread().is_alive() is False:
                     self.destroy()
-                    if DEBUG: print("Leave from AsyncVideo thread")
+                    logger.info("Leave from AsyncVideo thread")
                     return
                 tm2 = time.time()
             if self.need_to_close: return
@@ -282,7 +292,6 @@ class AsyncVideo(BaseCapture):
             # Extractor
             if self.frame_capture:
                 if self.queue.qsize() > 60 * 60:
-                    print("@@@@@@@@")
                     time.sleep(0.008)
                     continue
                 check, frame = self.v.read()
@@ -291,7 +300,7 @@ class AsyncVideo(BaseCapture):
                     cnt += 1
                     if time.time() - tm > 1.0:
                         tm = time.time()
-                        if DEBUG: print("VideoFPS:", cnt)
+                        logger.info(f"\033[0K\rVideoFPS: {cnt}\033[1A")
                         cnt = 0
                 else:
                     if self.loop:
@@ -310,7 +319,7 @@ class AsyncVideo(BaseCapture):
                         continue
                     self.framecount += 1
                     if current_frame - self.framecount > 10 or self.reset:
-                        #print("SET",current_frame,self.framecount,self.reset)
+                        # logger.debug("SET",current_frame,self.framecount,self.reset)
                         self.v.set(cv2.CAP_PROP_POS_FRAMES, current_frame)
                         self.reset = 0
                         self.framecount = current_frame
@@ -323,13 +332,13 @@ class AsyncVideo(BaseCapture):
                     cnt += 1
                     if time.time() - tm > 1.0:
                         tm = time.time()
-                        if DEBUG: print("VideoFPS:", cnt)
+                        logger.info(f"\033[0KVideoFPS: {cnt}\033[1A")
                         cnt = 0
-                # print(self.framecount,self.seq,self.f,self.offset,time.time()-self.start_time)
+                # logger.debug(self.framecount,self.seq,self.f,self.offset,time.time()-self.start_time)
                 if self.seq <= self.f:
-                    if DEBUG: print("End")
+                    logger.debug("End")
                     if self.loop:
-                        if DEBUG: print("Loop")
+                        logger.debug("Loop")
                         self.v.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         self.start_time = 0
                         self.framecount = 0
@@ -350,9 +359,9 @@ class AsyncVideo(BaseCapture):
             self.sound_fd.close()
         try:
             self.v.release()
-            if DEBUG: print("Released-AsyncVideo")
-        except:
-            traceback.print_exc()
+            logger.info("Released-AsyncVideo")
+        except Exception as e:
+            logger.warning(e)
 
     def read(self):
         tm = time.time()
@@ -369,7 +378,6 @@ class AsyncVideo(BaseCapture):
         lock.acquire()
 
         key = 0
-        reset = 0
         if len(self.key_queue) > 0:
             key = self.key_queue.pop(0)
         if key:
@@ -395,7 +403,6 @@ class AsyncVideo(BaseCapture):
                 if self.seq <= pf:
                     self.start_time = 0
                     self.offset = 0
-                #print(key&0xFF)
             else:
                 if (key & 0xFF) == ord(b'q'):
                     return
@@ -445,8 +452,11 @@ class ImgFileStub(BaseCapture):
         self.f = cv2.imread(fd, cv2.IMREAD_COLOR)
         self.f = cv2.cvtColor(self.f, cv2.COLOR_BGR2RGB)
 
-    def is_ended(self): return False
-    def destroy(self): pass
+    def is_ended(self):
+        return False
+
+    def destroy(self):
+        pass
 
     def read(self):
         return (True, self.f)
@@ -468,8 +478,11 @@ class DirImgFileStub(BaseCapture):
                 f = os.path.join(self.f, f)
                 self.flist += [f]
 
-    def is_ended(self): return len(self.flist) == 0
-    def destroy(self): pass
+    def is_ended(self):
+        return len(self.flist) == 0
+
+    def destroy(self):
+        pass
 
     def read(self):
         while len(self.flist) > 0:
@@ -482,9 +495,14 @@ class DirImgFileStub(BaseCapture):
 
 
 class ScreenCapture(BaseCapture):
-    def __init__(self): self.need_to_close = False
-    def is_ended(self): return False
-    def destroy(self): self.need_to_close = True
+    def __init__(self):
+        self.need_to_close = False
+
+    def is_ended(self):
+        return False
+
+    def destroy(self):
+        self.need_to_close = True
 
     def read(self):
         with mss() as sct:
@@ -500,7 +518,7 @@ def open(f, **kwargs):
     if type(f) == str:
         if re.match(r"\d", f) is not None: f = int(f)
         if f == "-1": f = -1
-    if isinstance(f, (int,)):
+    if isinstance(f, (int, )):
         if f == -1:
             return ScreenCapture()
         return AsyncCamera(f, **kwargs)
@@ -518,7 +536,6 @@ def open(f, **kwargs):
     else:
         raise Exception("Does not exist file: " + f)
     return None
-
 
 def camera_info():
     if platform.uname()[0] == "Linux":
@@ -545,9 +562,18 @@ def extract_video2images(f, **kwargs):
     format = "jpg"
     if "format" in kwargs:
         format = kwargs["format"]
-    cmd = "%s -i \"%s\" -qscale:v %d  \"%s/image_%%05d.jpg\"" % (FFMPEG, f, quality, dr,)
+    cmd = "%s -i \"%s\" -qscale:v %d  \"%s/image_%%05d.jpg\"" % (
+        FFMPEG,
+        f,
+        quality,
+        dr,
+    )
     if format == "png":
-        cmd = "%s -i \"%s\" -vcodec png \"%s/image_%%05d.png\"" % (FFMPEG, f, dr,)
+        cmd = "%s -i \"%s\" -vcodec png \"%s/image_%%05d.png\"" % (
+            FFMPEG,
+            f,
+            dr,
+        )
     print(mkdir)
     subprocess.call(mkdir, shell=True)
     print(cmd)
@@ -563,9 +589,19 @@ def compress_images2video(f, **kwargs):
         format = kwargs["format"]
     if "fps" in kwargs:
         fps = kwargs["fps"]
-    cmd = "%s -y -framerate %s -i \"%s/image_%%05d.jpg\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
+    cmd = "%s -y -framerate %s -i \"%s/image_%%05d.jpg\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (
+        FFMPEG,
+        fps,
+        f,
+        f,
+    )
     if format == "png":
-        cmd = "%s -y -framerate %s -i \"%s/image_%%05d.png\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (FFMPEG, fps, f, f,)
+        cmd = "%s -y -framerate %s -i \"%s/image_%%05d.png\" -vcodec libx264 -pix_fmt yuv420p -r 60 \"%s.out.mp4\"" % (
+            FFMPEG,
+            fps,
+            f,
+            f,
+        )
     print(cmd)
     subprocess.call(cmd, shell=True)
 
@@ -573,7 +609,11 @@ def compress_images2video(f, **kwargs):
 def extract_video2audio(f):
     global FFMPEG
     f = os.path.abspath(f)
-    cmd = "%s -i \"%s\" -ab 192 -ar 44100 \"%s.out.mp3\"" % (FFMPEG, f, f,)
+    cmd = "%s -i \"%s\" -ab 192 -ar 44100 \"%s.out.mp3\"" % (
+        FFMPEG,
+        f,
+        f,
+    )
     print(cmd)
     subprocess.call(cmd, shell=True)
 
@@ -583,11 +623,17 @@ def join_audio_with_video(f, sf):
     f = os.path.abspath(f)
     sf = os.path.abspath(sf)
     print(f, sf)
-    cmd = "%s -i \"%s\" -i \"%s\"  -map 0:v -map 1:a -c copy -shortest \"%s.mkv\"" % (FFMPEG, f, sf, f,)
+    cmd = "%s -i \"%s\" -i \"%s\"  -map 0:v -map 1:a -c copy -shortest \"%s.mkv\"" % (
+        FFMPEG,
+        f,
+        sf,
+        f,
+    )
     print(cmd)
     subprocess.call(cmd, shell=True)
 
 
+# TODO
 def convert(f, func):
     f = os.path.abspath(f)
     video = Video(f, frame_capture=True)
@@ -602,7 +648,10 @@ def convert(f, func):
             img = std_resize(img)
             imgs = func(img)
             for im in imgs:
-                fname = "%s/image_%05d.png" % (dr, count,)
+                fname = "%s/image_%05d.png" % (
+                    dr,
+                    count,
+                )
                 cv2.imwrite(fname, im)
                 print(count)
                 count += 1
@@ -610,10 +659,10 @@ def convert(f, func):
             break
     print("Done")
     print("Clear")
-    subprocess.call("rm -f \"%s.mp3\"" % (f,), shell=True)
-    subprocess.call("rm -f \"%s.out.mp3\"" % (f,), shell=True)
-    subprocess.call("rm -f \"%s.out.mp4\"" % (dr,), shell=True)
-    subprocess.call("rm -f \"%s.out.mp4.mkv\"" % (dr,), shell=True)
+    subprocess.call("rm -f \"%s.mp3\"" % (f, ), shell=True)
+    subprocess.call("rm -f \"%s.out.mp3\"" % (f, ), shell=True)
+    subprocess.call("rm -f \"%s.out.mp4\"" % (dr, ), shell=True)
+    subprocess.call("rm -f \"%s.out.mp4.mkv\"" % (dr, ), shell=True)
     print("Create an audio")
     toaudio(f)
     print("Archiving....")
@@ -630,13 +679,44 @@ def gamma(img, g):
     img = cv2.LUT(img, lookUpTable)
     return img
 
+def take_one_shot(frame=100, format="jpg"):
+    pass
+
 
 if __name__ == '__main__':
-    import acapture
-    import pyglview
-    import sys
 
-    cap = acapture.open(sys.argv[1] if len(sys.argv) > 1 else os.path.join(os.path.expanduser('~'), "test.mp4"))
+    import pyglview
+    import argparse
+    print(cv2.VideoCapture(0))
+
+    def setup_log(name=__name__, level=logging.DEBUG):
+        logger = logging.getLogger(name) if name is not None else logging.getLogger()
+        logger.setLevel(logging.DEBUG)
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(level)
+        handler.setFormatter(logging.Formatter("%(asctime)s [%(filename)s:%(lineno)d] %(message)s"))
+        logger.addHandler(handler)
+        return logger
+
+    # setup_log("pyglview", level=logging.DEBUG)
+    logger = setup_log(__name__, logging.DEBUG)
+
+    parser = argparse.ArgumentParser(description='')
+    parser.add_argument('input', type=str, help='')
+    parser.add_argument('--codec', type=str, default="libx265", help='')
+    parser.add_argument('--quality', type=int, default=None, help='')
+    parser.add_argument('--quality_adjust', type=int, default=None, help='+6=low, +3=middle, high=0')
+    parser.add_argument('--quality_test', action='store_true')
+    parser.add_argument('--resolution', type=int, default=0, help='0/1280/1920')
+    parser.add_argument('--test', action='store_true')
+    parser.add_argument('--animation', action='store_true')
+    parser.add_argument('--volume', type=str, default=None, help='')
+    parser.add_argument('--disable_two_pass', action='store_true')
+    parser.add_argument('--generate', action='store_true')
+    parser.add_argument('--disable_audio_normalize', action='store_true')
+    args = parser.parse_args()
+
+    cap = open(os.path.expanduser(args.input))
 
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener, fullscreen=False)
 
@@ -645,11 +725,12 @@ if __name__ == '__main__':
             check, frame = cap.read()
             if check:
                 view.set_image(frame)
-                # view.set_image(gamma(frame, 0.6))
-        except:
-            traceback.print_exc()
+        except Exception as e:
+            logger.error(e)
             exit(9)
-        pass
+
     view.set_loop(loop)
     view.start()
-    print("Main thread ended")
+    logger.info("Main thread ended")
+else:
+    logger.addHandler(logging.NullHandler())
