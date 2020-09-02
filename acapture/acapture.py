@@ -305,6 +305,8 @@ class AsyncVideo(BaseCapture):
                 else:
                     if self.loop:
                         self.v.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    else:
+                        self.seq_is_ended = True
             #############################################################################
             # Player
             else:
@@ -537,6 +539,7 @@ def open(f, **kwargs):
         raise Exception("Does not exist file: " + f)
     return None
 
+
 def camera_info():
     if platform.uname()[0] == "Linux":
         exe_file = which("v4l2-ctl")
@@ -632,8 +635,9 @@ def join_audio_with_video(f, sf):
     print(cmd)
     subprocess.call(cmd, shell=True)
 
-
 # TODO
+
+
 def convert(f, func):
     f = os.path.abspath(f)
     video = Video(f, frame_capture=True)
@@ -679,45 +683,65 @@ def gamma(img, g):
     img = cv2.LUT(img, lookUpTable)
     return img
 
+
 def take_one_shot(frame=100, format="jpg"):
     pass
 
 
-if __name__ == '__main__':
+class VideoWriteStream:
+    def __init__(self, **kargs):
+        if "input_stream" in kargs:
+            input_stream = kargs["input_stream"]
+            if input_stream.loop is not False:
+                raise Exception("Input stream loop flag must be false")
+            if input_stream.frame_capture is not True:
+                raise Exception("Input stream frame_capture must be true")
+        else:
+            raise Exception("input_stream arg did not specify.")
 
+        if "output" not in kargs:
+            raise Exception("output arg did not specify.")
+        output = kargs["output"]
+        format = "X264"
+        # format = "XVID"
+        if "format" in kargs:
+            format = kargs["format"]
+        # http://www.fourcc.org/codecs.php
+        fourcc = cv2.VideoWriter_fourcc(*format)
+        out = cv2.VideoWriter(output, fourcc, input_stream.fps, (int(input_stream.width), int(input_stream.height)))
+        self.writer = out
+
+    def write(self, frame):
+        self.writer.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+    def close(self):
+        self.writer.release()
+
+
+def test_video_write_stream():
     import pyglview
     import argparse
-    print(cv2.VideoCapture(0))
 
-    def setup_log(name=__name__, level=logging.DEBUG):
-        logger = logging.getLogger(name) if name is not None else logging.getLogger()
-        logger.setLevel(logging.DEBUG)
-        handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(level)
-        handler.setFormatter(logging.Formatter("%(asctime)s [%(filename)s:%(lineno)d] %(message)s"))
-        logger.addHandler(handler)
-        return logger
+    fd = os.path.expanduser("~/test.mp4")
+    output = os.path.expanduser("~/output.mp4")
+    cap = open(fd, frame_capture=True, loop=False)
+    wstream = VideoWriteStream(output=output, input_stream=cap)
 
-    # setup_log("pyglview", level=logging.DEBUG)
-    logger = setup_log(__name__, logging.DEBUG)
+    while True:
+        check, frame = cap.read()
+        if check:
+            wstream.write(frame)
+            pass
+        if cap.is_ended():
+            break
+    wstream.close()
 
-    parser = argparse.ArgumentParser(description='')
-    parser.add_argument('input', type=str, help='')
-    parser.add_argument('--codec', type=str, default="libx265", help='')
-    parser.add_argument('--quality', type=int, default=None, help='')
-    parser.add_argument('--quality_adjust', type=int, default=None, help='+6=low, +3=middle, high=0')
-    parser.add_argument('--quality_test', action='store_true')
-    parser.add_argument('--resolution', type=int, default=0, help='0/1280/1920')
-    parser.add_argument('--test', action='store_true')
-    parser.add_argument('--animation', action='store_true')
-    parser.add_argument('--volume', type=str, default=None, help='')
-    parser.add_argument('--disable_two_pass', action='store_true')
-    parser.add_argument('--generate', action='store_true')
-    parser.add_argument('--disable_audio_normalize', action='store_true')
-    args = parser.parse_args()
 
-    cap = open(os.path.expanduser(args.input))
+def test_std():
+    import pyglview
+    import argparse
 
+    cap = open(os.path.expanduser(sys.argv[1]))
     view = pyglview.Viewer(keyboard_listener=cap.keyboard_listener, fullscreen=False)
 
     def loop():
@@ -731,6 +755,7 @@ if __name__ == '__main__':
 
     view.set_loop(loop)
     view.start()
-    logger.info("Main thread ended")
-else:
-    logger.addHandler(logging.NullHandler())
+
+
+if __name__ == '__main__':
+    test_video_write_stream()
