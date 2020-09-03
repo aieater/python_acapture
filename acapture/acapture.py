@@ -298,7 +298,7 @@ class AsyncVideo(BaseCapture):
                     continue
                 check, frame = self.v.read()
                 if time.time() - last > 5:
-                    print("Force quit sequence due to something invalid video.")
+                    print("Force quit due to invalid sequence.")
                     self.queue.put((None, None))
                     return
                 if check:
