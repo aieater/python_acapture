@@ -278,7 +278,9 @@ class AsyncVideo(BaseCapture):
         tm = time.time()
         cnt = 0
         tm2 = time.time()
+        last = time.time()
         lock = self.lock
+        index_count = 0
         while True:
             if time.time() - tm2 > 1.0:
                 if threading.main_thread().is_alive() is False:
@@ -295,18 +297,25 @@ class AsyncVideo(BaseCapture):
                     time.sleep(0.008)
                     continue
                 check, frame = self.v.read()
+                if time.time() - last > 5:
+                    print("Force quit sequence due to something invalid video.")
+                    self.queue.put((None, None))
+                    return
                 if check:
+                    last = time.time()
                     self.queue.put((check, cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)))
                     cnt += 1
+                    index_count += 1
                     if time.time() - tm > 1.0:
                         tm = time.time()
                         logger.info(f"\033[0K\rVideoFPS: {cnt}\033[1A")
                         cnt = 0
+                    # print(index_count, self.total)
+                    if index_count == int(self.total):
+                        self.queue.put((None, None))
                 else:
                     if self.loop:
                         self.v.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                    else:
-                        self.seq_is_ended = True
             #############################################################################
             # Player
             else:
@@ -721,19 +730,23 @@ class VideoWriteStream:
 def test_video_write_stream():
     import pyglview
     import argparse
+    import tqdm
 
-    fd = os.path.expanduser("~/test.mp4")
+
+    fd = os.path.expanduser("~/test6.mp4")
     output = os.path.expanduser("~/output.mp4")
     cap = open(fd, frame_capture=True, loop=False)
     wstream = VideoWriteStream(output=output, input_stream=cap)
 
-    while True:
-        check, frame = cap.read()
-        if check:
-            wstream.write(frame)
-            pass
-        if cap.is_ended():
-            break
+    with tqdm.tqdm(total=cap.total, leave=True) as pbar:
+        while True:
+            check, frame = cap.read()
+            if check:
+                wstream.write(frame)
+                pbar.update(1)
+            if check is None:
+                break
+    print("Done")
     wstream.close()
 
 
